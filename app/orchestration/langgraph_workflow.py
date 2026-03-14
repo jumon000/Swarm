@@ -78,20 +78,46 @@ class EventWorkflow:
         logger.info("Loading context...")
         
         try:
-            # Retrieve event memories from vector store
-            memories = vector_store.get_event_context(
-                event_id=state["event_id"],
-                k=3
-            )
+            # Retrieve event memories from vector store (handle errors gracefully)
+            try:
+                memories = vector_store.get_event_context(
+                    event_id=state["event_id"],
+                    k=3
+                )
+            except Exception as e:
+                logger.warning(f"Vector store retrieval failed: {e}")
+                memories = []
             
-            # Retrieve user preferences
-            user_prefs = vector_store.get_user_preferences(
-                user_id=state["user_id"]
-            )
+            # Retrieve user preferences (handle errors gracefully)
+            try:
+                user_prefs = vector_store.get_user_preferences(
+                    user_id=state["user_id"]
+                )
+            except Exception as e:
+                logger.warning(f"User preferences retrieval failed: {e}")
+                user_prefs = []
             
-            # Update state with retrieved context
+            # IMPORTANT FIX: Load participants from state
+            participants = state.get("participants", [])
+            speakers = []
+            sponsors = []
+            
+            # Segment participants by role
+            for p in participants:
+                if p.get("is_speaker"):
+                    speakers.append(p)
+                if p.get("is_sponsor"):
+                    sponsors.append(p)
+            
+            logger.info(f"Loaded {len(participants)} participants ({len(speakers)} speakers, {len(sponsors)} sponsors)")
+            
+            # Update state with retrieved context and participants
             return {
                 **state,
+                "participants": participants,
+                "participant_count": len(participants),
+                "speakers": speakers,
+                "sponsors": sponsors,
                 "retrieved_memories": memories,
                 "context": {
                     "memories": memories,
@@ -233,8 +259,17 @@ class EventWorkflow:
         logger.info(f"Starting workflow {workflow_id} for event {event_id}")
         
         # Create initial state
+        # Create initial state
         initial_state = create_initial_state(user_id, event_id, event_data)
         initial_state["workflow_id"] = workflow_id
+
+        # CRITICAL FIX: Ensure participants are in the initial state
+        if "participants" in event_data:
+            initial_state["participants"] = event_data["participants"]
+            initial_state["participant_count"] = len(event_data["participants"])
+            logger.info(f"Loaded {len(event_data['participants'])} participants into initial state")
+        else:
+            logger.warning("No participants provided in event_data!")
         
         # Use default config if not provided
         if config is None:

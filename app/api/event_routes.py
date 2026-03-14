@@ -6,7 +6,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-
+from sqlalchemy.orm import selectinload
 from app.database.session import get_db
 from app.database.models import User, Event, EventStatus
 from app.schemas.event_schema import (
@@ -240,20 +240,22 @@ async def get_event_schedule(
     """
     # Verify event ownership
     result = await db.execute(
-        select(Event).where(
+        select(Event)
+        .options(selectinload(Event.schedules))  # ✅ Eager load!
+        .where(
             Event.id == event_id,
             Event.owner_id == current_user.id
         )
     )
     event = result.scalar_one_or_none()
-    
+
     if not event:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Event not found"
         )
-    
-    return event.schedules
+
+    return event.schedules  # ✅ Already loaded, no error
 
 
 @router.get("/{event_id}/marketing", response_model=List[MarketingPostResponse])
@@ -273,9 +275,11 @@ async def get_event_marketing(
     Returns:
         List of marketing posts
     """
-    # Verify event ownership
+    # FIXED: Eager load marketing_posts relationship
     result = await db.execute(
-        select(Event).where(
+        select(Event)
+        .options(selectinload(Event.marketing_posts))  # ✅ Added this!
+        .where(
             Event.id == event_id,
             Event.owner_id == current_user.id
         )
@@ -288,4 +292,4 @@ async def get_event_marketing(
             detail="Event not found"
         )
     
-    return event.marketing_posts
+    return event.marketing_posts  # ✅ Now safely loaded
