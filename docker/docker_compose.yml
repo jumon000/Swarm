@@ -22,9 +22,9 @@ services:
       - event_logistics_network
 
   # Redis Cache and Celery Broker
-  redis:
-    image: redis:7-alpine
-    container_name: event_logistics_redis
+        POSTGRES_USER: ${POSTGRES_USER:-postgres}
+        POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+        POSTGRES_DB: ${POSTGRES_DB:-event_logistics}
     ports:
       - "6379:6379"
     volumes:
@@ -36,6 +36,7 @@ services:
       retries: 5
     networks:
       - event_logistics_network
+      restart: unless-stopped
 
   # FastAPI Application
   api:
@@ -52,6 +53,7 @@ services:
       - ../.env
     ports:
       - "8000:8000"
+    restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
@@ -59,26 +61,30 @@ services:
         condition: service_healthy
     volumes:
       - ../app:/app/app
-      - ../logs:/app/logs
+          - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-event_logistics}
       - ../chroma_db:/app/chroma_db
     networks:
       - event_logistics_network
     restart: unless-stopped
 
   # Celery Worker (Optional)
-  celery_worker:
+          - "8080:8080"
     build:
       context: ..
       dockerfile: docker/Dockerfile
     container_name: event_logistics_celery
     command: celery -A app.celery_app worker --loglevel=info
-    environment:
-      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/event_logistics
-      - REDIS_URL=redis://redis:6379/0
-      - CELERY_BROKER_URL=redis://redis:6379/0
+        volumes:
+          - logs:/app/logs
+          - chroma_db:/app/chroma_db
       - CELERY_RESULT_BACKEND=redis://redis:6379/0
     env_file:
       - ../.env
+        healthcheck:
+          test: ["CMD-SHELL", "curl -fsS http://localhost:8080/health || exit 1"]
+          interval: 30s
+          timeout: 10s
+          retries: 3
     depends_on:
       - postgres
       - redis
@@ -92,7 +98,7 @@ services:
       - with-celery
 
   # PgAdmin (Optional - for database management)
-  pgadmin:
+        - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-event_logistics}
     image: dpage/pgadmin4:latest
     container_name: event_logistics_pgadmin
     environment:
@@ -101,9 +107,8 @@ services:
     ports:
       - "5050:80"
     depends_on:
-      - postgres
-    networks:
-      - event_logistics_network
+      volumes:
+        - logs:/app/logs
     profiles:
       - with-pgadmin
 
@@ -111,6 +116,10 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  logs:
+    driver: local
+  chroma_db:
     driver: local
 
 networks:

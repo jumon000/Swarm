@@ -285,6 +285,11 @@ async def prepare_emails(
             send_stats = await communication_agent.send_emails(result_state, db)
             results_payload = send_stats
         else:
+            results_payload = {
+                "prepared": len(result_state.get("emails_sent", [])),
+                "emails_prepared": result_state.get("emails_sent", []),
+                "template_variations": result_state.get("template_variations", None)
+            }
         return AgentExecutionResponse(
             workflow_id=UUID(result_state["workflow_id"]),
             status="completed",
