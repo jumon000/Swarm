@@ -71,7 +71,10 @@ class Settings(BaseSettings):
     @property
     def database_url_sync(self) -> str:
         """Get synchronous database URL for Alembic"""
-        return self.DATABASE_URL.replace("+asyncpg", "")
+        url = self.DATABASE_URL.replace("+asyncpg", "")
+        if "ssl=require" in url:
+            url = url.replace("ssl=require", "sslmode=require")
+        return url
 
 
 @lru_cache()
